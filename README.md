@@ -1,1 +1,1 @@
-# eve-market
+# Analysis of EVE Online market transactions
