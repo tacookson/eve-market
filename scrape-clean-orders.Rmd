@@ -15,6 +15,7 @@ Load libraries
 ```{r}
 library(tidyverse)
 library(lubridate)
+library(janitor)
 ```
 
 Set up lists, etc. (url is https://storage.googleapis.com/evekit_md/2019/01/05/trades_allregions_20190105.gz)
@@ -28,15 +29,11 @@ url_table <- as_tibble(seq(ymd("2010-01-01"), ymd("2020-12-31"), by = "day")) %>
          file_name = str_c("trades_allregions_", year, month, day, ".gz"),
          url = str_c("https://storage.googleapis.com/evekit_md/", year, "/", month, "/", day, "/", file_name))
 
-### Web scraping code
 download_list <- url_table %>%
-  filter(between(date, ymd("2019-10-01"), ymd("2019-10-30"))) %>%
+  filter(between(date, ymd("2019-07-01"), ymd("2019-07-31"))) %>%
   pull(url)
 
 map(download_list, ~ download.file(., destfile = paste0("./data/", basename(.))))
-###
-
-file_list <- paste0("./data/", list.files("./data/"))
 ```
 
 Cleaning function
@@ -68,26 +65,75 @@ clean_gz_file <- function(x) {
 }
 ```
 
-Import and clean data
+
+### Playing around with optimising cleaning function
 
 ```{r}
+gz_file <- readLines("./data/trades_allregions_20191030.gz") %>%
+  unlist
+
+test <- gz_file %>%
+  as.tibble() %>%
+  separate(value,
+           into = c("datetime", "actual_trade", "sell_order", "order_id", "price", "units", "location_id"),
+           sep = ",") %>%
+  mutate(row_number = row_number(),
+         meta_bin = is.na(actual_trade),
+         meta_value = ifelse(is.na(actual_trade), datetime, NA),
+         datetime = ifelse(is.na(meta_value), datetime, NA),
+         region_id = ifelse(str_length(meta_value) > 7, "region_id", NA),
+         trade_count = ifelse(lag(region_id) == "region_id", "trade_count", NA),
+         region_count = ifelse(!is.na(lead(region_id)) & meta_bin, "region_count", NA),
+         item_id = ifelse(!is.na(lead(region_id, 2)) & meta_bin, "item_id", NA),
+         meta_key = coalesce(region_id, trade_count, region_count, item_id)) %>%
+  select(-region_id:-item_id) %>%
+  spread(meta_key, meta_value) %>%
+  fill(item_id, region_id, .direction = "down") %>%
+  filter(!meta_bin) %>%
+  select(item_id, region_id, location_id, datetime:units) %>%
+  mutate_at(vars(item_id:datetime, order_id:units), parse_number, na = "None") %>%
+  mutate(datetime = as_datetime(datetime / 1000),
+         actual_trade = ifelse(actual_trade == "True", TRUE, FALSE),
+         sell_order = ifelse(sell_order == "True", TRUE, FALSE))
+```
+
+
+Import data from .gz files
+
+```{r}
+file_list <- paste0("./data/", list.files("./data/"))
+
 gz_files <- map(file_list, readLines) %>%
   unlist()
+```
 
+Clean data using cleaning function defined above
+
+```{r}
 df <- clean_gz_file(gz_files)
 ```
+
+Import reference table for item_id and market types
+
+```{r}
+ids <- read_csv("./reference/invTypes.csv") %>%
+  clean_names() %>%
+  rename(item_id = type_id,
+         item_name = type_name)
+```
+
 
 Test summarising to Jita (region_id == 10000002) Orca (item_id == 28606) trades
 
 ```{r}
 df %>%
   filter(region_id == 10000002,
-         item_id == 44992) %>%
+         item_id == 28606,
+         price < 1000000000) %>%
   mutate(order_type = as.factor(ifelse(!sell_order, "bought from sell order", "sold to buy order"))) %>%
   ggplot(aes(datetime, price, col = order_type)) +
   geom_point(alpha = 0.5) +
-  geom_smooth() +
-  scale_y_continuous(labels = scales::unit_format(scale = 1e-6, unit = "M"))
+  geom_smooth()
 
 df %>%
   filter(region_id == 10000002) %>%
