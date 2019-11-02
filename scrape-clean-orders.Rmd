@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 Load libraries
+
 ```{r}
 library(tidyverse)
 library(lubridate)
@@ -30,7 +31,7 @@ url_table <- as_tibble(seq(ymd("2010-01-01"), ymd("2020-12-31"), by = "day")) %>
          url = str_c("https://storage.googleapis.com/evekit_md/", year, "/", month, "/", day, "/", file_name))
 
 download_list <- url_table %>%
-  filter(between(date, ymd("2019-07-01"), ymd("2019-07-31"))) %>%
+  filter(between(date, ymd("2019-10-31"), ymd("2019-10-31"))) %>%
   pull(url)
 
 map(download_list, ~ download.file(., destfile = paste0("./data/", basename(.))))
@@ -40,7 +41,7 @@ Cleaning function
 
 ```{r}
 clean_gz_file <- function(x) {
-  as.tibble(x) %>%
+  as_tibble(x) %>%
     separate(value,
              into = c("datetime", "actual_trade", "sell_order", "order_id", "price", "units", "location_id"),
              sep = ",") %>%
@@ -60,48 +61,16 @@ clean_gz_file <- function(x) {
     select(item_id, region_id, location_id, datetime:units) %>%
     mutate_at(vars(item_id:datetime, order_id:units), parse_number, na = "None") %>%
     mutate(datetime = as_datetime(datetime / 1000),
-           actual_trade = ifelse(actual_trade == "True", TRUE, FALSE),
-           sell_order = ifelse(sell_order == "True", TRUE, FALSE))
+           actual_trade = str_detect(actual_trade, "T"),
+           sell_order = str_detect(sell_order, "T"))
 }
 ```
-
-
-### Playing around with optimising cleaning function
-
-```{r}
-gz_file <- readLines("./data/trades_allregions_20191030.gz") %>%
-  unlist
-
-test <- gz_file %>%
-  as.tibble() %>%
-  separate(value,
-           into = c("datetime", "actual_trade", "sell_order", "order_id", "price", "units", "location_id"),
-           sep = ",") %>%
-  mutate(row_number = row_number(),
-         meta_bin = is.na(actual_trade),
-         meta_value = ifelse(is.na(actual_trade), datetime, NA),
-         datetime = ifelse(is.na(meta_value), datetime, NA),
-         region_id = ifelse(str_length(meta_value) > 7, "region_id", NA),
-         trade_count = ifelse(lag(region_id) == "region_id", "trade_count", NA),
-         region_count = ifelse(!is.na(lead(region_id)) & meta_bin, "region_count", NA),
-         item_id = ifelse(!is.na(lead(region_id, 2)) & meta_bin, "item_id", NA),
-         meta_key = coalesce(region_id, trade_count, region_count, item_id)) %>%
-  select(-region_id:-item_id) %>%
-  spread(meta_key, meta_value) %>%
-  fill(item_id, region_id, .direction = "down") %>%
-  filter(!meta_bin) %>%
-  select(item_id, region_id, location_id, datetime:units) %>%
-  mutate_at(vars(item_id:datetime, order_id:units), parse_number, na = "None") %>%
-  mutate(datetime = as_datetime(datetime / 1000),
-         actual_trade = ifelse(actual_trade == "True", TRUE, FALSE),
-         sell_order = ifelse(sell_order == "True", TRUE, FALSE))
-```
-
 
 Import data from .gz files
 
 ```{r}
-file_list <- paste0("./data/", list.files("./data/"))
+path <- "./data/201910/"
+file_list <- paste0(path, list.files(path))
 
 gz_files <- map(file_list, readLines) %>%
   unlist()
@@ -110,7 +79,7 @@ gz_files <- map(file_list, readLines) %>%
 Clean data using cleaning function defined above
 
 ```{r}
-df <- clean_gz_file(gz_files)
+market <- clean_gz_file(gz_files)
 ```
 
 Import reference table for item_id and market types
@@ -122,26 +91,33 @@ ids <- read_csv("./reference/invTypes.csv") %>%
          item_name = type_name)
 ```
 
+Join reference table to raw trade data
+
+```{r}
+market_joined <- market %>% left_join(ids, by = "item_id") %>%
+  select(item_id, item_name,
+         group_id, group_name,
+         market_group_id, market_group_name,
+         region_id, location_id, datetime, sell_order, price, units)
+
+market_joined %>%
+  mutate(value = price * units) %>%
+  count(group_name, market_group_name, item_name, wt = value, sort = TRUE) %>%
+  top_n(50) %>% View()
+```
 
 Test summarising to Jita (region_id == 10000002) Orca (item_id == 28606) trades
 
 ```{r}
-df %>%
+market_joined %>%
   filter(region_id == 10000002,
-         item_id == 28606,
-         price < 1000000000) %>%
+         str_detect(item_name, "Gila"),
+         price < 500000000) %>%
   mutate(order_type = as.factor(ifelse(!sell_order, "bought from sell order", "sold to buy order"))) %>%
   ggplot(aes(datetime, price, col = order_type)) +
   geom_point(alpha = 0.5) +
+  scale_y_continuous(labels = scales::comma_format())
   geom_smooth()
-
-df %>%
-  filter(region_id == 10000002) %>%
-  group_by(item_id) %>%
-  summarise(pct_sold = sum(as.integer(sell_order) * units) / sum(units),
-            trades = n()) %>%
-  filter(pct_sold > 0.8,
-         trades > 100) %>%
-  arrange(-trades)
 ```
+
 
