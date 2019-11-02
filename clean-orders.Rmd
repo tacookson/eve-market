@@ -1,7 +1,7 @@
 ---
-title: "scrape-clean-orders"
+title: "clean-orders"
 author: "Alex Cookson"
-date: "31/10/2019"
+date: "02/11/2019"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -19,25 +19,7 @@ library(lubridate)
 library(janitor)
 ```
 
-Set up lists, etc. (url is https://storage.googleapis.com/evekit_md/2019/01/05/trades_allregions_20190105.gz)
-
-```{r}
-url_table <- as_tibble(seq(ymd("2010-01-01"), ymd("2020-12-31"), by = "day")) %>%
-  rename(date = value) %>%
-  mutate(year = format.Date(date, "%Y"),
-         month = format.Date(date, "%m"),
-         day = format.Date(date, "%d"),
-         file_name = str_c("trades_allregions_", year, month, day, ".gz"),
-         url = str_c("https://storage.googleapis.com/evekit_md/", year, "/", month, "/", day, "/", file_name))
-
-download_list <- url_table %>%
-  filter(between(date, ymd("2019-10-31"), ymd("2019-10-31"))) %>%
-  pull(url)
-
-map(download_list, ~ download.file(., destfile = paste0("./data/", basename(.))))
-```
-
-Cleaning function
+Create cleaning function
 
 ```{r}
 clean_gz_file <- function(x) {
@@ -66,7 +48,7 @@ clean_gz_file <- function(x) {
 }
 ```
 
-Import data from .gz files
+Import data from .gz files (currently need to define the path to a specific year-month folder)
 
 ```{r}
 path <- "./data/201910/"
@@ -119,5 +101,3 @@ market_joined %>%
   scale_y_continuous(labels = scales::comma_format())
   geom_smooth()
 ```
-
-
