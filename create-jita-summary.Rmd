@@ -18,11 +18,15 @@ library(tidyverse)
 ```
 
 ```{r}
-market <- map(list.files("./data/daily-summary/", full.names = TRUE), read_csv) %>%
+daily_summaries <- map(list.files("./data/daily-summary/", full.names = TRUE), read_csv) %>%
   bind_rows()
 
-jita <- market %>%
+jita <- daily_summaries %>%
   filter(region_id == 10000002)
+
+jita %>%
+  write_csv("./data/daily-summary-jita/daily-jita.csv")
 ```
+
 
 

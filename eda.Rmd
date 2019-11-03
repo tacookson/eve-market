@@ -1,0 +1,78 @@
+---
+title: "eda"
+author: "Alex Cookson"
+date: "03/11/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load libraries
+
+```{r}
+library(tidyverse)
+library(zoo)
+```
+
+Import Jita data
+
+```{r}
+jita <- read_csv("./data/daily-summary-jita/daily-jita.csv")
+```
+
+Test Jita data
+
+```{r}
+jita %>%
+  filter(item_id == 11985) %>%
+  group_by(sell_order) %>%
+  arrange(date) %>%
+  mutate(median_7_days = rollmean(median_price, 7, align = "right", fill = NA),
+         median_14_days = rollmean(median_price, 14, align = "right", fill = NA),
+         median_28_days = rollmean(median_price, 28, align = "right", fill = NA)) %>%
+  ggplot(aes(date, median_28_days, col = sell_order)) +
+  geom_point(aes(y = median_price), shape = "*") +
+  geom_line()
+```
+
+Import reference table for item_id and market types
+
+```{r}
+ids <- read_csv("./reference/invTypes.csv") %>%
+  clean_names() %>%
+  rename(item_id = type_id,
+         item_name = type_name)
+```
+
+Join reference table to raw trade data
+
+```{r}
+market_joined <- market %>% left_join(ids, by = "item_id") %>%
+  select(item_id, item_name,
+         group_id, group_name,
+         market_group_id, market_group_name,
+         region_id, location_id, datetime, sell_order, price, units)
+
+market_joined %>%
+  mutate(value = price * units) %>%
+  count(group_name, market_group_name, item_name, wt = value, sort = TRUE) %>%
+  top_n(50) %>% View()
+```
+
+Test summarising to Jita (region_id == 10000002) Orca (item_id == 28606) trades
+
+```{r}
+market_joined %>%
+  filter(region_id == 10000002,
+         str_detect(item_name, "Gila"),
+         price < 500000000) %>%
+  mutate(order_type = as.factor(ifelse(!sell_order, "bought from sell order", "sold to buy order"))) %>%
+  ggplot(aes(datetime, price, col = order_type)) +
+  geom_point(alpha = 0.5) +
+  scale_y_continuous(labels = scales::comma_format())
+  geom_smooth()
+```

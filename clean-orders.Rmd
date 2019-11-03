@@ -52,7 +52,10 @@ clean_gz_file <- function(x) {
 Import data from .gz files (currently need to define the path to a specific year-month folder)
 
 ```{r}
-path <- "./data/raw-gz/201905/"
+### Specify year and month (files are too big to do much larger)
+yearmon <- "201812"
+
+path <- paste0("./data/raw-gz/", yearmon, "/")
 file_list <- paste0(path, list.files(path))
 
 gz_files <- map(file_list, readLines) %>%
@@ -67,7 +70,7 @@ market <- clean_gz_file(gz_files)
 rm(gz_files)
 
 market %>%
-  write_csv("raw-201905.csv")
+  write_csv(paste0("./data/raw-csv/raw-", yearmon, ".csv"))
 ```
 
 Summarise data by day (broken down by item, region, and order type)
@@ -86,45 +89,6 @@ daily_summary <- market %>%
             units_traded = sum(units)) %>%
   ungroup()
 
-daily_summary %>% write_csv("daily-201905.csv")
-```
-
-### Post-cleaning testing steps
-
-Import reference table for item_id and market types
-
-```{r}
-ids <- read_csv("./reference/invTypes.csv") %>%
-  clean_names() %>%
-  rename(item_id = type_id,
-         item_name = type_name)
-```
-
-Join reference table to raw trade data
-
-```{r}
-market_joined <- market %>% left_join(ids, by = "item_id") %>%
-  select(item_id, item_name,
-         group_id, group_name,
-         market_group_id, market_group_name,
-         region_id, location_id, datetime, sell_order, price, units)
-
-market_joined %>%
-  mutate(value = price * units) %>%
-  count(group_name, market_group_name, item_name, wt = value, sort = TRUE) %>%
-  top_n(50) %>% View()
-```
-
-Test summarising to Jita (region_id == 10000002) Orca (item_id == 28606) trades
-
-```{r}
-market_joined %>%
-  filter(region_id == 10000002,
-         str_detect(item_name, "Gila"),
-         price < 500000000) %>%
-  mutate(order_type = as.factor(ifelse(!sell_order, "bought from sell order", "sold to buy order"))) %>%
-  ggplot(aes(datetime, price, col = order_type)) +
-  geom_point(alpha = 0.5) +
-  scale_y_continuous(labels = scales::comma_format())
-  geom_smooth()
+daily_summary %>%
+  write_csv(paste0("./data/daily-summary/daily-", yearmon, ".csv"))
 ```
