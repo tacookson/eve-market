@@ -1,0 +1,28 @@
+---
+title: "create-jita-summary"
+author: "Alex Cookson"
+date: "02/11/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load libraries
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+market <- map(list.files("./data/daily-summary/", full.names = TRUE), read_csv) %>%
+  bind_rows()
+
+jita <- market %>%
+  filter(region_id == 10000002)
+```
+
+

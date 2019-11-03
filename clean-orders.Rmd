@@ -16,6 +16,7 @@ Load libraries
 ```{r}
 library(tidyverse)
 library(lubridate)
+library(Hmisc)
 library(janitor)
 ```
 
@@ -51,7 +52,7 @@ clean_gz_file <- function(x) {
 Import data from .gz files (currently need to define the path to a specific year-month folder)
 
 ```{r}
-path <- "./data/201910/"
+path <- "./data/raw-gz/201905/"
 file_list <- paste0(path, list.files(path))
 
 gz_files <- map(file_list, readLines) %>%
@@ -62,7 +63,33 @@ Clean data using cleaning function defined above
 
 ```{r}
 market <- clean_gz_file(gz_files)
+
+rm(gz_files)
+
+market %>%
+  write_csv("raw-201905.csv")
 ```
+
+Summarise data by day (broken down by item, region, and order type)
+
+```{r}
+daily_summary <- market %>%
+  mutate(date = as_date(datetime)) %>%
+  filter(units > 0) %>%
+  group_by(item_id, region_id, date, sell_order) %>%
+  summarise(mean_price = wtd.mean(price, weights = units),
+            median_price = wtd.quantile(price, weights = units, probs = 0.5),
+            percentile_05 = wtd.quantile(price, weights = units, probs = 0.05),
+            percentile_25 = wtd.quantile(price, weights = units, probs = 0.25),
+            percentile_75 = wtd.quantile(price, weights = units, probs = 0.75),
+            percentile_95 = wtd.quantile(price, weights = units, probs = 0.95),
+            units_traded = sum(units)) %>%
+  ungroup()
+
+daily_summary %>% write_csv("daily-201905.csv")
+```
+
+### Post-cleaning testing steps
 
 Import reference table for item_id and market types
 

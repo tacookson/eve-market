@@ -30,9 +30,9 @@ url_table <- as_tibble(seq(ymd("2010-01-01"), ymd("2020-12-31"), by = "day")) %>
          url = str_c("https://storage.googleapis.com/evekit_md/", year, "/", month, "/", day, "/", file_name))
 
 download_list <- url_table %>%
-  filter(between(date, ymd("2019-06-01"), ymd("2019-06-30"))) %>%
+  filter(between(date, ymd("2019-05-10"), ymd("2019-05-31"))) %>%
   pull(url)
 
-map(download_list, ~ download.file(., destfile = paste0("./data/", basename(.))))
+map(download_list, ~ download.file(., destfile = paste0("./data/raw-gz/", basename(.))))
 ```
 ☺
